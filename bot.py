@@ -17,6 +17,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from messages import MESSAGES, PET_NAMES
+from stories import next_line, phase_at
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -36,6 +37,7 @@ load_env(BASE_DIR / ".env")
 TOKEN = os.environ.get("BOT_TOKEN", "")
 DEFAULT_TZ = os.environ.get("DEFAULT_TZ", "Asia/Dhaka")
 DB_PATH = os.environ.get("DB_PATH", str(BASE_DIR / "bot.db"))
+NONSTOP_MINUTES = int(os.environ.get("NONSTOP_MINUTES", "5"))
 API_URL = f"https://api.telegram.org/bot{TOKEN}"
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=logging.INFO)
@@ -56,6 +58,7 @@ COMMANDS_MENU = [
     ("link", "Connect your partner"),
     ("schedule", "Auto-send every morning, e.g. /schedule 07:30"),
     ("unschedule", "Stop the daily auto-send"),
+    ("nonstop", "A sweet text every few minutes: /nonstop on or off"),
     ("timezone", "Set your timezone, e.g. /timezone Asia/Dhaka"),
     ("unlink", "Disconnect your partner"),
     ("help", "Show what I can do"),
@@ -71,6 +74,8 @@ HELP = """☀️ I help you send sweet good-morning texts to your love.
 /link: get an invite link for your partner. Once they open it, you can send messages to them with one tap.
 /schedule 07:30: I'll send them a good morning every day at that time
 /unschedule: stop the daily message
+/nonstop on: a new sweet text every {minutes} minutes, all day, each one continuing the last
+/nonstop off: stop it
 /timezone Asia/Dhaka: set your timezone (default: {tz})
 /unlink: disconnect"""
 
@@ -123,6 +128,18 @@ db.execute("""
         tz         TEXT,
         last_sent  TEXT
     )""")
+# Columns added after the first release; add them to existing databases.
+NEW_COLUMNS = {
+    "nonstop_on": "INTEGER DEFAULT 0",
+    "story_id": "TEXT",
+    "story_step": "INTEGER DEFAULT 0",
+    "used_stories": "TEXT DEFAULT '[]'",
+    "last_nonstop_at": "REAL DEFAULT 0",
+}
+existing_columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
+for column, definition in NEW_COLUMNS.items():
+    if column not in existing_columns:
+        db.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
 db.commit()
 
 
@@ -184,12 +201,14 @@ def message_keyboard(user):
     return {"inline_keyboard": rows}
 
 
-def deliver(sender, text):
+def deliver(sender, text, header=True, silent=False):
     """Send a message to the sender's partner. Returns True on success."""
     if not sender["partner_id"]:
         return False
+    if header:
+        text = f"💌 From {sender['first_name'] or 'your love'}:\n\n{text}"
     try:
-        send(sender["partner_id"], f"💌 From {sender['first_name'] or 'your love'}:\n\n{text}")
+        send(sender["partner_id"], text, disable_notification=silent)
         return True
     except TelegramError as e:
         log.warning("Could not deliver to %s: %s", sender["partner_id"], e)
@@ -201,11 +220,15 @@ def deliver(sender, text):
 def cmd_start(user, arg):
     if arg:
         return accept_invite(user, arg)
-    send(user["chat_id"], f"Hi {user['first_name'] or 'there'}! 💕\n\n" + HELP.format(tz=DEFAULT_TZ))
+    send(user["chat_id"], f"Hi {user['first_name'] or 'there'}! 💕\n\n" + help_text())
+
+
+def help_text():
+    return HELP.format(tz=DEFAULT_TZ, minutes=NONSTOP_MINUTES)
 
 
 def cmd_help(user, arg):
-    send(user["chat_id"], HELP.format(tz=DEFAULT_TZ))
+    send(user["chat_id"], help_text())
 
 
 def cmd_morning(user, arg):
@@ -245,7 +268,8 @@ def accept_invite(user, code):
     if inviter["chat_id"] == user["chat_id"]:
         return send(user["chat_id"], "That's your own invite link 😄 Send it to your partner instead.")
     # Drop any previous partnerships of either person before connecting them.
-    db.execute("UPDATE users SET partner_id=NULL WHERE partner_id IN (?, ?)", (user["chat_id"], inviter["chat_id"]))
+    db.execute("UPDATE users SET partner_id=NULL, nonstop_on=0 WHERE partner_id IN (?, ?)",
+               (user["chat_id"], inviter["chat_id"]))
     update_user(user["chat_id"], partner_id=inviter["chat_id"])
     update_user(inviter["chat_id"], partner_id=user["chat_id"], link_code=None)
     send(user["chat_id"], f"You're now connected with {inviter['first_name'] or 'your partner'} 💞\n\n"
@@ -258,10 +282,10 @@ def cmd_unlink(user, arg):
     if not user["partner_id"]:
         return send(user["chat_id"], "You're not linked with anyone. Use /link to invite your partner.")
     partner_id = user["partner_id"]
-    update_user(user["chat_id"], partner_id=None)
+    update_user(user["chat_id"], partner_id=None, nonstop_on=0)
     partner = find_user(partner_id)
     if partner and partner["partner_id"] == user["chat_id"]:
-        update_user(partner_id, partner_id=None)
+        update_user(partner_id, partner_id=None, nonstop_on=0)
         try:
             send(partner_id, f"{user['first_name'] or 'Your partner'} disconnected from you.")
         except TelegramError:
@@ -293,6 +317,26 @@ def cmd_unschedule(user, arg):
     send(user["chat_id"], "Daily good morning turned off.")
 
 
+def cmd_nonstop(user, arg):
+    arg = arg.lower()
+    if arg in ("on", "start"):
+        if not user["partner_id"]:
+            return send(user["chat_id"], "Link your partner first with /link 💞")
+        update_user(user["chat_id"], nonstop_on=1, last_nonstop_at=0, story_id=None, story_step=0)
+        send(user["chat_id"],
+             f"💞 Non-stop love is ON.\n\nEvery {NONSTOP_MINUTES} minutes I'll send {partner_label(user)} a new sweet "
+             "text that picks up where the last one left off, matched to the time of day. "
+             "Messages between 10 PM and 5 AM arrive silently 🌙\n\nTurn it off with /nonstop off")
+    elif arg in ("off", "stop"):
+        update_user(user["chat_id"], nonstop_on=0)
+        send(user["chat_id"], "Non-stop love is off. /nonstop on to start again.")
+    else:
+        status = "ON 💞" if user["nonstop_on"] else "off"
+        send(user["chat_id"], f"Non-stop love: {status}\n\n"
+                              f"/nonstop on: a sweet text every {NONSTOP_MINUTES} minutes, each one continuing the last\n"
+                              "/nonstop off: stop it")
+
+
 def cmd_timezone(user, arg):
     if not arg:
         return send(user["chat_id"], f"Your timezone: {user['tz'] or DEFAULT_TZ}\n\n"
@@ -316,6 +360,7 @@ COMMANDS = {
     "/unlink": cmd_unlink,
     "/schedule": cmd_schedule,
     "/unschedule": cmd_unschedule,
+    "/nonstop": cmd_nonstop,
     "/timezone": cmd_timezone,
 }
 
@@ -414,6 +459,28 @@ def run_schedules():
             log.warning("Scheduler notify failed for %s: %s", user["chat_id"], e)
 
 
+def run_nonstop():
+    """Send the next line of each user's storyline once their interval has passed."""
+    now = time.time()
+    rows = db.execute("SELECT * FROM users WHERE nonstop_on=1 AND partner_id IS NOT NULL AND last_nonstop_at <= ?",
+                      (now - NONSTOP_MINUTES * 60,)).fetchall()
+    for user in rows:
+        hour = datetime.now(user_tz(user)).hour
+        used = json.loads(user["used_stories"] or "[]")
+        template, story_id, step, used = next_line(user["story_id"], user["story_step"], used, hour)
+        update_user(user["chat_id"], story_id=story_id, story_step=step + 1,
+                    used_stories=json.dumps(used), last_nonstop_at=now)
+        # Only the first line of a story gets the "From ..." header, so the rest reads like a conversation.
+        if deliver(user, fill(template, user["nickname"]), header=step == 0, silent=phase_at(hour) == "night"):
+            continue
+        update_user(user["chat_id"], nonstop_on=0)
+        try:
+            send(user["chat_id"], "I couldn't reach your partner, so I turned /nonstop off 😢 "
+                                  "They may have blocked or stopped the bot.")
+        except TelegramError as e:
+            log.warning("Non-stop notify failed for %s: %s", user["chat_id"], e)
+
+
 # ---------- Main loop ----------
 
 def main():
@@ -446,10 +513,11 @@ def main():
                 log.exception("Failed to handle update %s", update.get("update_id"))
         if time.monotonic() - last_check >= 30:
             last_check = time.monotonic()
-            try:
-                run_schedules()
-            except Exception:
-                log.exception("Scheduler failed")
+            for job in (run_schedules, run_nonstop):
+                try:
+                    job()
+                except Exception:
+                    log.exception("%s failed", job.__name__)
 
 
 if __name__ == "__main__":
