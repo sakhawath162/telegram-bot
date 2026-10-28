@@ -1,6 +1,6 @@
-# ☀️ Good Morning Bot
+# 😘 Kiss Me Awake
 
-A tiny Telegram bot that writes sweet good-morning texts for your girlfriend or boyfriend, and can deliver them for you every morning.
+A tiny Telegram bot ([@ClaudebshsushbsBot](https://t.me/ClaudebshsushbsBot)) that writes sweet good-morning texts for your girlfriend or boyfriend, and can deliver them for you every morning.
 
 It uses only the Python standard library, so there's nothing to `pip install`.
 
