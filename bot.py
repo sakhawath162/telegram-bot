@@ -17,7 +17,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from messages import MESSAGES, PET_NAMES
-from stories import next_line, phase_at
+from stories import next_line
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -37,7 +37,24 @@ load_env(BASE_DIR / ".env")
 TOKEN = os.environ.get("BOT_TOKEN", "")
 DEFAULT_TZ = os.environ.get("DEFAULT_TZ", "Asia/Dhaka")
 DB_PATH = os.environ.get("DB_PATH", str(BASE_DIR / "bot.db"))
-NONSTOP_MINUTES = int(os.environ.get("NONSTOP_MINUTES", "5"))
+NONSTOP_START = os.environ.get("NONSTOP_START", "07:00")
+NONSTOP_END = os.environ.get("NONSTOP_END", "08:00")
+NONSTOP_MINUTES = int(os.environ.get("NONSTOP_MINUTES", "30"))
+
+
+def to_minutes(hhmm):
+    hour, minute = map(int, hhmm.split(":"))
+    return hour * 60 + minute
+
+
+def hhmm(minutes):
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+# Morning send times as minutes after midnight, e.g. 07:00, 07:30, 08:00.
+NONSTOP_SLOTS = list(range(to_minutes(NONSTOP_START), to_minutes(NONSTOP_END) + 1, NONSTOP_MINUTES))
+NONSTOP_TIMES = ", ".join(hhmm(m) for m in NONSTOP_SLOTS[:-1]) + " and " + hhmm(NONSTOP_SLOTS[-1]) \
+    if len(NONSTOP_SLOTS) > 1 else hhmm(NONSTOP_SLOTS[0])
 API_URL = f"https://api.telegram.org/bot{TOKEN}"
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=logging.INFO)
@@ -58,7 +75,7 @@ COMMANDS_MENU = [
     ("link", "Connect your partner"),
     ("schedule", "Auto-send every morning, e.g. /schedule 07:30"),
     ("unschedule", "Stop the daily auto-send"),
-    ("nonstop", "A sweet text every few minutes: /nonstop on or off"),
+    ("nonstop", f"Morning texts at {NONSTOP_TIMES}: /nonstop on or off"),
     ("timezone", "Set your timezone, e.g. /timezone Asia/Dhaka"),
     ("unlink", "Disconnect your partner"),
     ("help", "Show what I can do"),
@@ -74,7 +91,7 @@ HELP = """☀️ I help you send sweet good-morning texts to your love.
 /link: get an invite link for your partner. Once they open it, you can send messages to them with one tap.
 /schedule 07:30: I'll send them a good morning every day at that time
 /unschedule: stop the daily message
-/nonstop on: a new sweet text every {minutes} minutes, all day, each one continuing the last
+/nonstop on: sweet texts every morning at {times}, each one continuing the last
 /nonstop off: stop it
 /timezone Asia/Dhaka: set your timezone (default: {tz})
 /unlink: disconnect"""
@@ -134,7 +151,7 @@ NEW_COLUMNS = {
     "story_id": "TEXT",
     "story_step": "INTEGER DEFAULT 0",
     "used_stories": "TEXT DEFAULT '[]'",
-    "last_nonstop_at": "REAL DEFAULT 0",
+    "nonstop_slot": "TEXT",
 }
 existing_columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
 for column, definition in NEW_COLUMNS.items():
@@ -201,14 +218,14 @@ def message_keyboard(user):
     return {"inline_keyboard": rows}
 
 
-def deliver(sender, text, header=True, silent=False):
+def deliver(sender, text, header=True):
     """Send a message to the sender's partner. Returns True on success."""
     if not sender["partner_id"]:
         return False
     if header:
         text = f"💌 From {sender['first_name'] or 'your love'}:\n\n{text}"
     try:
-        send(sender["partner_id"], text, disable_notification=silent)
+        send(sender["partner_id"], text)
         return True
     except TelegramError as e:
         log.warning("Could not deliver to %s: %s", sender["partner_id"], e)
@@ -224,7 +241,7 @@ def cmd_start(user, arg):
 
 
 def help_text():
-    return HELP.format(tz=DEFAULT_TZ, minutes=NONSTOP_MINUTES)
+    return HELP.format(tz=DEFAULT_TZ, times=NONSTOP_TIMES)
 
 
 def cmd_help(user, arg):
@@ -322,18 +339,18 @@ def cmd_nonstop(user, arg):
     if arg in ("on", "start"):
         if not user["partner_id"]:
             return send(user["chat_id"], "Link your partner first with /link 💞")
-        update_user(user["chat_id"], nonstop_on=1, last_nonstop_at=0, story_id=None, story_step=0)
+        update_user(user["chat_id"], nonstop_on=1, nonstop_slot=None, story_id=None, story_step=0)
         send(user["chat_id"],
-             f"💞 Non-stop love is ON.\n\nEvery {NONSTOP_MINUTES} minutes I'll send {partner_label(user)} a new sweet "
-             "text that picks up where the last one left off, matched to the time of day. "
-             "Messages between 10 PM and 5 AM arrive silently 🌙\n\nTurn it off with /nonstop off")
+             f"💞 Non-stop love is ON.\n\nEvery morning at {NONSTOP_TIMES} ({user['tz'] or DEFAULT_TZ}) "
+             f"I'll send {partner_label(user)} a sweet text. Each one picks up where the last left off, "
+             "and every morning tells a new little story ☀️\n\nTurn it off with /nonstop off")
     elif arg in ("off", "stop"):
         update_user(user["chat_id"], nonstop_on=0)
         send(user["chat_id"], "Non-stop love is off. /nonstop on to start again.")
     else:
         status = "ON 💞" if user["nonstop_on"] else "off"
         send(user["chat_id"], f"Non-stop love: {status}\n\n"
-                              f"/nonstop on: a sweet text every {NONSTOP_MINUTES} minutes, each one continuing the last\n"
+                              f"/nonstop on: sweet texts every morning at {NONSTOP_TIMES}, each one continuing the last\n"
                               "/nonstop off: stop it")
 
 
@@ -373,6 +390,7 @@ def handle_message(msg):
     user = get_user(msg["chat"]["id"], msg["from"].get("first_name"))
     cmd, _, arg = (msg.get("text") or "").strip().partition(" ")
     handler = COMMANDS.get(cmd.split("@")[0].lower())
+    log.info("%s (%s): %s", user["first_name"], user["chat_id"], cmd if handler else "<text>")
     if handler:
         handler(user, arg.strip())
     else:
@@ -460,18 +478,27 @@ def run_schedules():
 
 
 def run_nonstop():
-    """Send the next line of each user's storyline once their interval has passed."""
-    now = time.time()
-    rows = db.execute("SELECT * FROM users WHERE nonstop_on=1 AND partner_id IS NOT NULL AND last_nonstop_at <= ?",
-                      (now - NONSTOP_MINUTES * 60,)).fetchall()
+    """At each morning slot (07:00, 07:30, 08:00 by default), send the next line of the user's storyline."""
+    rows = db.execute("SELECT * FROM users WHERE nonstop_on=1 AND partner_id IS NOT NULL").fetchall()
     for user in rows:
-        hour = datetime.now(user_tz(user)).hour
-        used = json.loads(user["used_stories"] or "[]")
-        template, story_id, step, used = next_line(user["story_id"], user["story_step"], used, hour)
+        now = datetime.now(user_tz(user))
+        minutes = now.hour * 60 + now.minute
+        # A slot stays due for 15 minutes, so a short restart doesn't skip it.
+        due = [slot for slot in NONSTOP_SLOTS if 0 <= minutes - slot < 15]
+        if not due:
+            continue
+        slot = due[-1]
+        slot_key = f"{now.date().isoformat()} {hhmm(slot)}"
+        if user["nonstop_slot"] == slot_key:
+            continue
+        # The first slot starts a fresh story each morning; the last one always closes it.
+        story_id = None if slot == NONSTOP_SLOTS[0] else user["story_id"]
+        used = [i for i in json.loads(user["used_stories"] or "[]") if isinstance(i, int)]
+        template, story_id, step, used = next_line(story_id, user["story_step"], used, last=slot == NONSTOP_SLOTS[-1])
         update_user(user["chat_id"], story_id=story_id, story_step=step + 1,
-                    used_stories=json.dumps(used), last_nonstop_at=now)
+                    used_stories=json.dumps(used), nonstop_slot=slot_key)
         # Only the first line of a story gets the "From ..." header, so the rest reads like a conversation.
-        if deliver(user, fill(template, user["nickname"]), header=step == 0, silent=phase_at(hour) == "night"):
+        if deliver(user, fill(template, user["nickname"]), header=step == 0):
             continue
         update_user(user["chat_id"], nonstop_on=0)
         try:

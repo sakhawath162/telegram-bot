@@ -11,7 +11,7 @@ It uses only the Python standard library, so there's nothing to `pip install`.
 - `/name Jaan` personalizes every message with your partner's nickname
 - `/link` sends your partner an invite. Once they accept, a 💌 *Send to partner* button appears.
 - `/schedule 07:30` sends your partner a good morning automatically every day
-- `/nonstop on` sends your partner a new text every 5 minutes, all day. Messages follow short storylines (wake up → coffee → have a great day), so each one continues the last. Storylines match the time of day, don't repeat until all the others have been used, and arrive silently from 10 PM to 5 AM. Turn it off with `/nonstop off`.
+- `/nonstop on` sends your partner three texts every morning, at 07:00, 07:30 and 08:00. Each morning tells a new short storyline (wake up → coffee → have a great day), so each text continues the last. Storylines don't repeat until all the others have been used. Turn it off with `/nonstop off`.
 - Inline mode (optional): type `@yourbot` in **any** Telegram chat (for example, your chat with your partner) and tap a message to send it as yourself. Your partner doesn't even need to use the bot.
 
 > Why is linking needed? Telegram bots can only message people who have started the bot. Inline mode works around that because the message is sent by *you*.
@@ -53,4 +53,4 @@ nohup python3 bot.py > bot.log 2>&1 &
 
 Edit [messages.py](messages.py) and add your own lines to any category. Use `{name}` where the nickname should go.
 
-For `/nonstop`, add storylines to [stories.py](stories.py). Each story is a list of steps, and each step is a list of alternative lines. Change the interval with `NONSTOP_MINUTES` in `.env`.
+For `/nonstop`, add storylines to [stories.py](stories.py). Each story is a list of steps, and each step is a list of alternative lines. Change the times with `NONSTOP_START`, `NONSTOP_END` and `NONSTOP_MINUTES` in `.env`.
