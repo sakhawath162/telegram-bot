@@ -1,0 +1,61 @@
+"""Good-morning message templates. `{name}` is replaced with your partner's nickname."""
+
+# Used when no nickname has been set.
+PET_NAMES = ["love", "sunshine", "babe", "darling", "sweetheart", "my heart"]
+
+MESSAGES = {
+    "cute": [
+        "Good morning, {name}! ☀️ Just a tiny reminder that you're my favorite notification.",
+        "Rise and shine, {name} 🌼 The sun is up, but you're still the brightest thing in my day.",
+        "Morning, {name}! 🐻 Sending you a big warm hug to start your day. Catch it!",
+        "Good morning, {name} 💛 I hope your coffee is strong and your day is as sweet as you.",
+        "Hey sleepyhead 😴 Wake up, {name}! The world needs your smile today.",
+        "Good morning, {name}! 🌸 I woke up thinking about you. Again. Every day. No regrets.",
+        "Morning, {name} 🥐 You + today = something wonderful. Go get it!",
+        "Good morning, {name}! 🐣 Here's your daily dose of love, freshly made, just for you.",
+        "Rise and shine, {name} ✨ Don't forget: you're amazing, you're loved, and you're mine.",
+        "Good morning, {name}! 🍓 I just wanted to be the first thing that makes you smile today.",
+        "Morning, {name}! 🌈 May your day be full of good vibes and zero traffic.",
+        "Wakey wakey, {name} ☕ I'd bring you breakfast in bed if I could. Here's a virtual one 🥞",
+    ],
+    "romantic": [
+        "Good morning, {name} ❤️ Every sunrise reminds me I get one more day to love you.",
+        "Good morning, {name}. Waking up knowing you're mine is the best feeling in the world 💕",
+        "Morning, {name} 🌅 Of all the things I'm grateful for today, you're at the very top.",
+        "Good morning, {name}. Somewhere, someone is smiling just because you exist. That someone is me 💕",
+        "The best part of my morning isn't the coffee. It's thinking about you, {name} ☕❤️",
+        "Good morning, {name} 💌 Distance, time, a busy day ahead... none of it changes how much I love you.",
+        "Morning, {name}. If I could, I'd start every day looking into your eyes. For now, this message will do 😘",
+        "Good morning, {name} 🌹 You're the first thought in my head and the last one in my heart, every day.",
+        "Wake up, {name}. The world got a little more beautiful the moment you opened your eyes 💖",
+        "Good morning to the person who still makes my heart skip a beat ❤️ Yes, you, {name}.",
+        "Good morning, {name}. Today I love you more than yesterday, and less than tomorrow 💞",
+        "Morning, {name} 🌤 Have a beautiful day, and remember someone is counting the hours until they see you.",
+    ],
+    "funny": [
+        "Good morning, {name}! 🫡 Reminder: you are legally required to have a great day. I checked.",
+        "Rise and shine, {name}! Or just rise. Shining is optional before coffee ☕",
+        "Good morning, {name}! I'd tell you a joke about mornings, but you're not awake enough yet 😜",
+        "Morning, {name}! 🛌 I know the bed is comfy, but I'm comfier. Get up and talk to me.",
+        "Good morning, {name}! Today's forecast: 100% chance of me missing you, with scattered kisses 😘",
+        "Wake up, {name}! 🐓 This is your official love alarm. There is no snooze button.",
+        "Good morning, {name}! Fun fact: people who get good-morning texts are 87% cuter. I made that up, but it's true for you 😏",
+        "Morning, {name}! ☕ Coffee first, adulting second, thinking about me all day long.",
+        "Good morning, {name}! Your bed called. It says it's tired of you. Time to get up 😂",
+        "Rise and shine, {name}! 🌞 Breakfast is the most important meal of the day. I'm the most important text of the day.",
+        "Good morning, {name}! I'm not saying you're perfect, but my heart hasn't found a single bug yet 🐞❤️",
+        "Morning, {name}! 🤖 Please confirm you're human by replying with a smile.",
+    ],
+    "poetic": [
+        "Good morning, {name} 🌅 The sky painted itself gold today, and it still can't match the way you light up my world.",
+        "Like the sun returns to the sky each morning, my heart returns to you, {name} ☀️",
+        "Morning dew on the petals, warm light through the window, and you on my mind, {name}. A perfect start 🌿",
+        "Good morning, {name}. The birds are singing, but no song is as sweet as your name in my thoughts 🕊",
+        "Every dawn is a love letter from the universe, and every one of them says your name, {name} 💌",
+        "The night was long without you, {name}, but the morning brought you back to my thoughts 🌄",
+        "Good morning, {name} 🌻 May your day bloom as softly and beautifully as you do.",
+        "Sunrise is just the world's way of saying: here's another day to love you, {name} 🌅",
+        "Good morning, {name}. You are the calm in my morning breeze and the warmth in my morning sun ☀️",
+        "As the morning light kisses the earth, let these words kiss your heart: good morning, {name} 💛",
+    ],
+}
